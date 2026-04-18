@@ -1,7 +1,7 @@
 # PROJECT KNOWLEDGE BASE
 
 **Generated:** 2026-04-18
-**Commit:** 1125951
+**Commit:** bee8f49
 **Branch:** main
 
 ## OVERVIEW
@@ -13,7 +13,7 @@ AstrBot plugin for GitHub repository event notifications via Events API polling.
 ```
 astrbot_plugin_github_notifier/
 ├── main.py                    # Plugin entry, command handlers, lifecycle
-├── metadata.yaml              # AstrBot plugin manifest
+├── metadata.yaml              # AstrBot plugin manifest (version info)
 ├── _conf_schema.json          # WebUI configuration schema
 ├── requirements.txt           # aiohttp>=3.8.0
 ├── services/                  # Business logic layer
@@ -30,26 +30,28 @@ astrbot_plugin_github_notifier/
 
 | Task | Location | Notes |
 |------|----------|-------|
-| Add new command | `main.py:124-378` | Use `@filter.command("cmd")` decorator |
-| Change poll interval logic | `services/event_poller.py:89-110` | `_poll_loop()` method |
-| Add event type | `main.py:30-37`, `models/event_models.py` | `SUPPORTED_EVENTS` + payload class |
-| Modify API calls | `services/github_client.py:108-189` | `fetch_events()` method |
+| Add new command | `main.py` | Use `@filter.command("cmd")` decorator |
+| Change poll interval logic | `services/event_poller.py` | `_poll_loop()` method |
+| Add event type | `main.py`, `models/event_models.py` | `SUPPORTED_EVENTS` + payload class |
+| Modify API calls | `services/github_client.py` | `fetch_events()` method |
 | Change message format | `services/message_formatter.py` | Instance methods with template support |
 | Customize templates | `_conf_schema.json` | `template_*_brief` / `template_*_full` |
-| Subscription persistence | `services/subscription_manager.py:52-82` | KV store operations |
+| Subscription persistence | `services/subscription_manager.py` | KV store operations |
 
 ## CONVENTIONS
 
-### AstrBot Plugin Patterns
-- Entry point: `@register()` decorator on `Star` subclass
+### AstrBot Plugin Patterns (v4+)
+- Entry point: `class MyPlugin(Star)` - NO `@register()` decorator (deprecated since v3.5.19)
+- `__init__(self, context: Context)` - NO config param
 - Commands: `@filter.command("name")` with `async def handler(event: AstrMessageEvent)`
-- Responses: `yield event.plain_result("message")` (generator pattern)
-- Config: Access via `self.config.get("key", default)`
+- Responses: `event.set_result(event.plain_result("message"))`
+- Config: Access via `context.get_config()` in `__init__`
+- KV Storage: `self.get_kv_data()`, `self.put_kv_data()` on plugin instance
 - Logging: `from astrbot.api import logger`
 
 ### Code Style
 - Type hints required on all function signatures
-- Docstrings for public methods (Chinese OK)
+- Chinese docstrings and log messages (project convention)
 - Dataclasses for models with `@property` for computed fields
 - Factory methods: `from_dict()`, `from_api_response()`
 - Async/await throughout
@@ -60,6 +62,18 @@ from .services.github_client import GitHubClient
 from .models.event_models import GitHubEvent
 ```
 
+### Version Control
+- **Semantic Versioning**: `vMAJOR.MINOR.PATCH` in `metadata.yaml`
+  - `MAJOR`: Breaking changes
+  - `MINOR`: New features (backward compatible)
+  - `PATCH`: Bug fixes
+- **Update version** in `metadata.yaml` before every commit
+- **Report to user** after every push with:
+  - Version change
+  - Commit hash
+  - Change type (feat/fix/refactor/etc.)
+  - Summary of changes
+
 ## ANTI-PATTERNS (THIS PROJECT)
 
 - No `__init__.py` at root (AstrBot loads plugins differently)
@@ -68,11 +82,13 @@ from .models.event_models import GitHubEvent
 
 ## UNIQUE STYLES
 
-- Chinese docstrings and log messages (project convention)
 - ETag caching to reduce API calls (304 = no rate limit consumption)
 - Dynamic poll interval from `X-Poll-Interval` header
-- Event ID deduplication with 500-item cache per repo
-- KV-backed initialization markers (survives restart)
+- Event deduplication via:
+  - In-memory event ID cache (500 per repo)
+  - KV-persisted `last_event_time` (survives restart)
+- Compare API fallback for PushEvent commits (Events API returns empty)
+- Private repo indicator when using Token
 
 ## COMMANDS
 
@@ -91,3 +107,4 @@ ruff format .
 - **API Delay**: Events may be 30s-6h delayed
 - **Event Retention**: GitHub keeps only 30 days
 - **Token**: Set `github_token` in config for private repos + higher limits
+- **Private Repo**: Shows `🔒 私有仓库 (使用 Token 访问)` indicator
