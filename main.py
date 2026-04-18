@@ -31,16 +31,17 @@ class GitHubNotifierPlugin(Star):
         "ForkEvent",
     ]
 
-    def __init__(self, context: Context) -> None:
+    def __init__(self, context: Context, config: dict = None) -> None:
         self.context = context
-
-        config = context.get_config() or {}
+        config = config or {}
 
         self.github_token = config.get("github_token", "")
         self.poll_interval = max(config.get("poll_interval", 60), 30)
         self.max_events_per_message = max(config.get("max_events_per_message", 5), 1)
         self.use_etag = config.get("use_etag_cache", True)
         self.respect_poll_interval = config.get("respect_poll_interval", True)
+
+        logger.info(f"[GitHubNotifier] 配置加载: github_token={'已设置' if self.github_token else '未设置'}")
 
         self.enabled_events = {
             "PushEvent": config.get("enable_push_event", True),
@@ -69,13 +70,12 @@ class GitHubNotifierPlugin(Star):
         self.event_poller.set_event_callback(self._on_new_events)
 
     async def initialize(self):
-        """插件初始化"""
         logger.info(
-            f"[GitHubNotifier] 初始化完成，轮询间隔: {self.poll_interval} 秒，"
-            f"Token: {'已设置' if self.github_token else '未设置'}"
+            f"[GitHubNotifier] 初始化完成\n"
+            f"  轮询间隔: {self.poll_interval} 秒\n"
+            f"  Token: {'已设置' if self.github_token else '未设置'}"
         )
 
-        # 启动轮询服务
         await self.event_poller.start()
 
     async def terminate(self):

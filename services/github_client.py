@@ -46,14 +46,11 @@ class GitHubClient:
         self.session: Optional[aiohttp.ClientSession] = None
         self.rate_limit = RateLimitInfo()
 
-        # ETag 缓存: repo_full_name -> (etag, last_modified)
         self._etag_cache: Dict[str, str] = {}
 
-        # 轮询间隔（秒）
         self.poll_interval: int = 60
 
     def _get_headers(self) -> Dict[str, str]:
-        """构建请求头"""
         headers = {
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",

@@ -42,10 +42,10 @@ astrbot_plugin_github_notifier/
 
 ### AstrBot Plugin Patterns (v4+)
 - Entry point: `class MyPlugin(Star)` - NO `@register()` decorator (deprecated since v3.5.19)
-- `__init__(self, context: Context)` - NO config param
+- `__init__(self, context: Context, config: dict = None)` - config 参数接收插件配置
 - Commands: `@filter.command("name")` with `async def handler(event: AstrMessageEvent)`
 - Responses: `event.set_result(event.plain_result("message"))`
-- Config: Access via `context.get_config()` in `__init__`
+- Config: Access via `config.get("key", default)` from `__init__` param (NOT `context.get_config()`)
 - KV Storage: `self.get_kv_data()`, `self.put_kv_data()` on plugin instance
 - Logging: `from astrbot.api import logger`
 
