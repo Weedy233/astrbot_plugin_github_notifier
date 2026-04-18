@@ -67,6 +67,8 @@ class PushEventPayload:
     pusher: Dict[str, Any]
     forced: bool = False
     compare: str = ""
+    size: int = 0
+    distinct_size: int = 0
 
     @property
     def branch(self) -> str:
@@ -75,8 +77,8 @@ class PushEventPayload:
 
     @property
     def commit_count(self) -> int:
-        """获取提交数量"""
-        return len(self.commits)
+        """获取提交数量 - 优先使用 size 字段，因为 commits 数组在 Events API 中经常为空"""
+        return self.size if self.size > 0 else len(self.commits)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PushEventPayload":
@@ -88,6 +90,8 @@ class PushEventPayload:
             pusher=data.get("pusher", {}),
             forced=data.get("forced", False),
             compare=data.get("compare", ""),
+            size=data.get("size", 0),
+            distinct_size=data.get("distinct_size", 0),
         )
 
 
