@@ -235,14 +235,28 @@ class EventPoller:
             owner, repo_name, per_page=self.max_events_per_poll
         )
 
-        if events:
-            self._record_events(repo, events)
-            if events:
-                latest = max(e.created_at for e in events)
-                await self._update_last_event_time(repo, latest)
-            self._last_poll_time[repo] = datetime.utcnow()
+        if not events:
+            return []
 
-        return events
+        is_initialized = await self._is_repo_initialized(repo)
+
+        if not is_initialized:
+            self._record_events(repo, events)
+            last_event_time = max(e.created_at for e in events)
+            await self._mark_repo_initialized(repo, last_event_time)
+            self._last_poll_time[repo] = datetime.utcnow()
+            return []
+
+        new_events = self._filter_new_events(repo, events)
+
+        if new_events:
+            self._record_events(repo, new_events)
+            latest = max(e.created_at for e in new_events)
+            await self._update_last_event_time(repo, latest)
+
+        self._last_poll_time[repo] = datetime.utcnow()
+
+        return new_events
 
     async def initialize_repo(self, repo: str) -> bool:
         owner, repo_name = self._parse_repo(repo)
