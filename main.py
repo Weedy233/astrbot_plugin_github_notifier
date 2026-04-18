@@ -190,15 +190,14 @@ class GitHubNotifierPlugin(Star):
         event.set_result(event.plain_result(f"🔄 正在检查仓库 {repo} ..."))
 
         owner, repo_name = self._parse_repo(repo)
-        is_accessible, error = await self.github_client.check_repository_access(
+        is_accessible, error, is_private = await self.github_client.check_repository_access(
             owner, repo_name
         )
 
         if not is_accessible:
             event.set_result(event.plain_result(
                 f"❌ 无法访问仓库 {repo}\n\n"
-                f"原因: {error}\n\n"
-                f"如果是私有仓库，请在配置中设置 GitHub Token"
+                f"原因: {error}"
             ))
             return
 
@@ -212,12 +211,14 @@ class GitHubNotifierPlugin(Star):
 
         await self.event_poller.initialize_repo(repo)
 
-        event.set_result(event.plain_result(
-            f"✅ 成功订阅 {repo}\n\n"
-            f"📋 监控事件类型: {', '.join(event_types)}\n"
-            f"⏰ 轮询间隔: {self.poll_interval} 秒\n\n"
-            f"💡 新的事件将自动推送到此会话"
-        ))
+        success_msg = f"✅ 成功订阅 {repo}\n\n"
+        if is_private:
+            success_msg += "🔒 私有仓库 (使用 Token 访问)\n\n"
+        success_msg += "📋 监控事件类型: " + ", ".join(event_types) + "\n"
+        success_msg += f"⏰ 轮询间隔: {self.poll_interval} 秒\n\n"
+        success_msg += "💡 新的事件将自动推送到此会话"
+
+        event.set_result(event.plain_result(success_msg))
 
     @filter.command("ghunsub")
     async def unsubscribe_repo(self, event: AstrMessageEvent, repo: str = None):

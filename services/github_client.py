@@ -188,11 +188,11 @@ class GitHubClient:
             logger.error(f"[GitHub] 获取 {repo_key} 事件时出错: {e}")
             return [], False
 
-    async def check_repository_access(self, owner: str, repo: str) -> Tuple[bool, str]:
+    async def check_repository_access(self, owner: str, repo: str) -> Tuple[bool, str, bool]:
         """检查仓库是否可访问
 
         Returns:
-            (是否可访问, 错误信息)
+            (是否可访问, 错误信息, 是否是私有仓库)
         """
         await self._ensure_session()
 
@@ -200,18 +200,62 @@ class GitHubClient:
 
         try:
             async with self.session.get(url) as resp:
-                if resp.status == 200:
-                    return True, ""
-                elif resp.status == 404:
-                    return False, "仓库不存在或没有访问权限"
-                elif resp.status == 403:
-                    return False, "API 速率限制或权限不足"
-                else:
-                    text = await resp.text()
-                    return False, f"HTTP {resp.status}: {text[:100]}"
+                self._parse_rate_limit_headers(dict(resp.headers))
 
+                if resp.status == 200:
+                    data = await resp.json()
+                    is_private = data.get("private", False)
+                    return True, "", is_private
+
+                text = await resp.text()
+
+                if resp.status == 404:
+                    return False, "仓库不存在或没有访问权限 (404 Not Found)", False
+
+                if resp.status == 403:
+                    error_msg = self._parse_github_error(text, resp.status)
+                    return False, f"权限不足或速率限制 (403 Forbidden): {error_msg}", False
+
+                if resp.status == 401:
+                    return False, "Token 无效或已过期 (401 Unauthorized)", False
+
+                return False, f"HTTP {resp.status}: {text[:200]}", False
+
+        except asyncio.TimeoutError:
+            return False, "请求超时", False
+        except aiohttp.ClientError as e:
+            return False, f"网络错误: {e}", False
         except Exception as e:
-            return False, str(e)
+            return False, f"未知错误: {e}", False
+
+    def _parse_github_error(self, response_text: str, status_code: int) -> str:
+        """解析 GitHub API 错误响应"""
+        try:
+            import json
+            data = json.loads(response_text)
+            message = data.get("message", "")
+
+            if "rate limit" in message.lower():
+                return f"速率限制 - 剩余: {self.rate_limit.remaining}/{self.rate_limit.limit}"
+
+            if "blocked from content creation" in message.lower():
+                return "账户被限制创建内容"
+
+            if "must have push access" in message.lower():
+                return "需要 Push 权限"
+
+            if "not found" in message.lower():
+                return "仓库不存在或无权访问"
+
+            errors = data.get("errors", [])
+            if errors:
+                error_details = "; ".join(e.get("message", str(e)) for e in errors)
+                return f"{message} ({error_details})" if message else error_details
+
+            return message if message else response_text[:100]
+
+        except (json.JSONDecodeError, ValueError):
+            return response_text[:100] if response_text else "未知错误"
 
     def get_poll_interval(self) -> int:
         """获取当前建议的轮询间隔"""
