@@ -13,6 +13,7 @@ from .services.github_client import GitHubClient
 from .services.subscription_manager import SubscriptionManager
 from .services.event_poller import EventPoller
 from .services.message_formatter import MessageFormatter
+from .services.template_manager import TemplateManager
 from .models.event_models import GitHubEvent
 
 
@@ -69,7 +70,8 @@ class GitHubNotifierPlugin(Star):
             poll_interval=self.poll_interval,
             respect_poll_interval=self.respect_poll_interval,
         )
-        self.message_formatter = MessageFormatter()
+        self.template_manager = TemplateManager(config)
+        self.message_formatter = MessageFormatter(self.template_manager)
 
         # 设置事件回调
         self.event_poller.set_event_callback(self._on_new_events)

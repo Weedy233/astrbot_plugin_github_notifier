@@ -1,6 +1,6 @@
 """消息格式化服务 - 将 GitHub 事件格式化为聊天消息"""
 
-from typing import List
+from typing import List, Optional
 
 from ..models.event_models import (
     GitHubEvent,
@@ -11,54 +11,46 @@ from ..models.event_models import (
     StarEventPayload,
     ForkEventPayload,
 )
+from .template_manager import TemplateManager
 
 
 class MessageFormatter:
-    """消息格式化器
+    """消息格式化器"""
 
-    将 GitHub 事件转换为适合聊天展示的文本消息。
-    支持多种事件类型的格式化。
-    """
+    def __init__(self, template_manager: Optional[TemplateManager] = None):
+        self.template_manager = template_manager
 
-    @staticmethod
     def format_events(
+        self,
         repo: str,
         events: List[GitHubEvent],
         max_events: int = 5,
     ) -> List[str]:
-        """格式化事件列表为多条消息
-
-        Args:
-            repo: 仓库名
-            events: 事件列表
-            max_events: 单条消息的最大事件数
-
-        Returns:
-            消息列表
-        """
+        """格式化事件列表为多条消息"""
         if not events:
             return []
 
-        # 按事件类型分组
         messages = []
 
-        # 限制每个消息的事件数
         for i in range(0, len(events), max_events):
             chunk = events[i : i + max_events]
-            message = MessageFormatter._format_event_chunk(
+            message = self._format_event_chunk(
                 repo, chunk, i + 1, len(events)
             )
             messages.append(message)
 
         return messages
 
-    @staticmethod
     def _format_event_chunk(
-        repo: str, events: List[GitHubEvent], start_index: int, total: int
+        self,
+        repo: str,
+        events: List[GitHubEvent],
+        start_index: int,
+        total: int,
     ) -> str:
         """格式化事件块"""
         if len(events) == 1:
-            return MessageFormatter._format_single_event(repo, events[0])
+            return self._format_single_event(repo, events[0])
 
         lines = [
             f"📢 [{repo}] 新动态 ({start_index}-{start_index + len(events) - 1}/{total})",
@@ -66,36 +58,45 @@ class MessageFormatter:
         ]
 
         for i, event in enumerate(events, start_index):
-            formatted = MessageFormatter._format_event_brief(event)
+            formatted = self._format_event_brief(repo, event)
             lines.append(f"{i}. {formatted}")
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_single_event(repo: str, event: GitHubEvent) -> str:
+    def _format_single_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化单个事件"""
         event_type = event.type
 
         if event_type == "PushEvent":
-            return MessageFormatter._format_push_event(repo, event)
+            return self._format_push_event(repo, event)
         elif event_type == "ReleaseEvent":
-            return MessageFormatter._format_release_event(repo, event)
+            return self._format_release_event(repo, event)
         elif event_type == "IssuesEvent":
-            return MessageFormatter._format_issues_event(repo, event)
+            return self._format_issues_event(repo, event)
         elif event_type == "PullRequestEvent":
-            return MessageFormatter._format_pull_request_event(repo, event)
+            return self._format_pull_request_event(repo, event)
         elif event_type == "WatchEvent":
-            return MessageFormatter._format_star_event(repo, event)
+            return self._format_star_event(repo, event)
         elif event_type == "ForkEvent":
-            return MessageFormatter._format_fork_event(repo, event)
+            return self._format_fork_event(repo, event)
         else:
-            return MessageFormatter._format_generic_event(repo, event)
+            return self._format_generic_event(repo, event)
 
-    @staticmethod
-    def _format_event_brief(event: GitHubEvent) -> str:
-        """格式化事件摘要（用于列表）"""
+    def _format_event_brief(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
+        """格式化事件摘要"""
         event_type = event.type
         actor = event.actor_login
+
+        if self.template_manager:
+            return self._format_brief_with_template(repo, event)
 
         if event_type == "PushEvent":
             payload = PushEventPayload.from_dict(event.payload)
@@ -142,10 +143,106 @@ class MessageFormatter:
         else:
             return f"📌 {actor} 触发了 {event_type}"
 
-    @staticmethod
-    def _format_push_event(repo: str, event: GitHubEvent) -> str:
+    def _format_brief_with_template(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
+        """使用模板格式化摘要"""
+        event_type = event.type
+
+        if event_type == "PushEvent":
+            payload = PushEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_push_context(
+                repo=repo,
+                username=event.actor_login,
+                branch=payload.branch,
+                commit_count=payload.commit_count,
+                commits=payload.commits,
+                compare_url=payload.compare,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        elif event_type == "ReleaseEvent":
+            payload = ReleaseEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_release_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                tag_name=payload.tag_name,
+                release_name=payload.release_name,
+                release_url=payload.release_url,
+                is_prerelease=payload.is_prerelease,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        elif event_type == "IssuesEvent":
+            payload = IssuesEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_issues_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                issue_number=payload.issue_number,
+                issue_title=payload.issue_title[:30],
+                issue_url=payload.issue_url,
+                state=payload.state,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        elif event_type == "PullRequestEvent":
+            payload = PullRequestEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_pr_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                pr_number=payload.pr_number,
+                pr_title=payload.pr_title[:30],
+                pr_url=payload.pr_url,
+                state=payload.state,
+                merged=payload.merged,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        elif event_type == "WatchEvent":
+            payload = StarEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_star_context(
+                repo=repo,
+                username=event.actor_login,
+                is_starred=payload.is_starred,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        elif event_type == "ForkEvent":
+            payload = ForkEventPayload.from_dict(event.payload)
+            context = self.template_manager.build_fork_context(
+                repo=repo,
+                username=event.actor_login,
+                forked_repo=payload.forked_repo_name,
+                forked_url=payload.forked_repo_url,
+            )
+            return self.template_manager.render_brief(event_type, context)
+
+        else:
+            return f"📌 {event.actor_login} 触发了 {event_type}"
+
+    def _format_push_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Push 事件"""
         payload = PushEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_push_context(
+                repo=repo,
+                username=event.actor_login,
+                branch=payload.branch,
+                commit_count=payload.commit_count,
+                commits=payload.commits,
+                compare_url=payload.compare,
+            )
+            return self.template_manager.render_full("PushEvent", context)
 
         lines = [
             f"📝 [{repo}] 代码推送",
@@ -172,10 +269,25 @@ class MessageFormatter:
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_release_event(repo: str, event: GitHubEvent) -> str:
+    def _format_release_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Release 事件"""
         payload = ReleaseEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_release_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                tag_name=payload.tag_name,
+                release_name=payload.release_name,
+                release_url=payload.release_url,
+                is_prerelease=payload.is_prerelease,
+            )
+            return self.template_manager.render_full("ReleaseEvent", context)
 
         lines = [
             f"🏷️ [{repo}] 版本发布",
@@ -193,10 +305,25 @@ class MessageFormatter:
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_issues_event(repo: str, event: GitHubEvent) -> str:
+    def _format_issues_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Issues 事件"""
         payload = IssuesEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_issues_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                issue_number=payload.issue_number,
+                issue_title=payload.issue_title,
+                issue_url=payload.issue_url,
+                state=payload.state,
+            )
+            return self.template_manager.render_full("IssuesEvent", context)
 
         action_map = {
             "opened": "🆕 创建",
@@ -220,10 +347,26 @@ class MessageFormatter:
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_pull_request_event(repo: str, event: GitHubEvent) -> str:
+    def _format_pull_request_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Pull Request 事件"""
         payload = PullRequestEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_pr_context(
+                repo=repo,
+                username=event.actor_login,
+                action=payload.action,
+                pr_number=payload.pr_number,
+                pr_title=payload.pr_title,
+                pr_url=payload.pr_url,
+                state=payload.state,
+                merged=payload.merged,
+            )
+            return self.template_manager.render_full("PullRequestEvent", context)
 
         action_map = {
             "opened": "🆕 创建",
@@ -251,10 +394,21 @@ class MessageFormatter:
 
         return "\n".join(lines)
 
-    @staticmethod
-    def _format_star_event(repo: str, event: GitHubEvent) -> str:
+    def _format_star_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Star 事件"""
         payload = StarEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_star_context(
+                repo=repo,
+                username=event.actor_login,
+                is_starred=payload.is_starred,
+            )
+            return self.template_manager.render_full("WatchEvent", context)
 
         if payload.is_starred:
             return (
@@ -263,10 +417,22 @@ class MessageFormatter:
         else:
             return f"💔 [{repo}] {event.actor_login} 取消了 Star"
 
-    @staticmethod
-    def _format_fork_event(repo: str, event: GitHubEvent) -> str:
+    def _format_fork_event(
+        self,
+        repo: str,
+        event: GitHubEvent,
+    ) -> str:
         """格式化 Fork 事件"""
         payload = ForkEventPayload.from_dict(event.payload)
+
+        if self.template_manager:
+            context = self.template_manager.build_fork_context(
+                repo=repo,
+                username=event.actor_login,
+                forked_repo=payload.forked_repo_name,
+                forked_url=payload.forked_repo_url,
+            )
+            return self.template_manager.render_full("ForkEvent", context)
 
         return (
             f"🍴 [{repo}] 仓库被 Fork\n"
