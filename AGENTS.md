@@ -72,6 +72,7 @@ from .models.event_models import GitHubEvent
 - ETag caching to reduce API calls (304 = no rate limit consumption)
 - Dynamic poll interval from `X-Poll-Interval` header
 - Event ID deduplication with 500-item cache per repo
+- KV-backed initialization markers (survives restart)
 
 ## COMMANDS
 

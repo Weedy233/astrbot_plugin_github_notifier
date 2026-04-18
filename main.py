@@ -67,6 +67,7 @@ class GitHubNotifierPlugin(Star):
         self.event_poller = EventPoller(
             github_client=self.github_client,
             subscription_manager=self.subscription_manager,
+            context=context,
             poll_interval=self.poll_interval,
             respect_poll_interval=self.respect_poll_interval,
         )
@@ -100,6 +101,9 @@ class GitHubNotifierPlugin(Star):
         if not filtered_events:
             return
 
+        # 为 PushEvent 补充提交信息（Events API 经常返回空的 commits 数组）
+        await self._enrich_push_events(repo, filtered_events)
+
         # 获取订阅此仓库的所有会话
         subscribers = await self.subscription_manager.get_subscribers(repo)
 
@@ -120,6 +124,42 @@ class GitHubNotifierPlugin(Star):
                     await asyncio.sleep(0.5)  # 避免发送过快
                 except Exception as e:
                     logger.error(f"[GitHubNotifier] 向 {umo} 发送消息失败: {e}")
+
+    async def _enrich_push_events(self, repo: str, events: List[GitHubEvent]):
+        """为 PushEvent 补充提交信息
+
+        GitHub Events API 的 PushEvent 经常返回空的 size 和 commits 数组，
+        需要调用 Compare API 来获取实际的提交信息。
+        """
+        from .models.event_models import PushEventPayload
+
+        owner, repo_name = self._parse_repo(repo)
+
+        for event in events:
+            if event.type != "PushEvent":
+                continue
+
+            payload = PushEventPayload.from_dict(event.payload)
+
+            if payload.commit_count > 0:
+                continue
+
+            if not payload.before or not payload.after:
+                continue
+
+            if payload.before == "0000000000000000000000000000000000000000":
+                continue
+
+            total_commits, commits = await self.github_client.fetch_compare(
+                owner, repo_name, payload.before, payload.after
+            )
+
+            if total_commits > 0:
+                event.payload["size"] = total_commits
+                event.payload["commits"] = commits
+                logger.debug(
+                    f"[GitHubNotifier] 通过 Compare API 补充 {repo} 的 {total_commits} 个提交信息"
+                )
 
     # ==================== 命令处理器 ====================
 
@@ -176,19 +216,14 @@ class GitHubNotifierPlugin(Star):
         # 执行订阅
         event_types = [k for k, v in self.enabled_events.items() if v]
 
-        # 检查是否是仓库的第一个订阅者
-        existing_subscribers = await self.subscription_manager.get_subscribers(repo)
-        is_first_subscriber = len(existing_subscribers) == 0
-
         await self.subscription_manager.subscribe(
             repo=repo,
             umo=umo,
             event_types=event_types,
         )
 
-        # 如果是第一个订阅者，静默初始化（记录当前事件，避免推送历史）
-        if is_first_subscriber:
-            await self.event_poller.initialize_repo(repo)
+        # 确保仓库已初始化（避免推送历史事件）
+        await self.event_poller.initialize_repo(repo)
 
         yield event.plain_result(
             f"✅ 成功订阅 {repo}\n\n"

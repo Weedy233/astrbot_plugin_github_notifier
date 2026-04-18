@@ -78,16 +78,20 @@ class PushEventPayload:
     @property
     def commit_count(self) -> int:
         """获取提交数量 - 优先使用 size 字段，因为 commits 数组在 Events API 中经常为空"""
-        return self.size if self.size > 0 else len(self.commits)
+        if isinstance(self.size, int) and self.size > 0:
+            return self.size
+        return len(self.commits)
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> "PushEventPayload":
+        # Events API 使用 head，Webhook 使用 after，兼容两者
+        after = data.get("after", "") or data.get("head", "")
         return cls(
             ref=data.get("ref", ""),
             before=data.get("before", ""),
-            after=data.get("after", ""),
-            commits=data.get("commits", []),
-            pusher=data.get("pusher", {}),
+            after=after,
+            commits=data.get("commits", []) or [],
+            pusher=data.get("pusher", {}) or {},
             forced=data.get("forced", False),
             compare=data.get("compare", ""),
             size=data.get("size", 0),

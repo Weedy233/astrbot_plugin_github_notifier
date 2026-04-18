@@ -217,6 +217,42 @@ class GitHubClient:
         """获取当前建议的轮询间隔"""
         return self.poll_interval
 
+    async def fetch_compare(
+        self,
+        owner: str,
+        repo: str,
+        before: str,
+        head: str,
+    ) -> Tuple[int, List[Dict]]:
+        await self._ensure_session()
+
+        url = f"{self.BASE_URL}/repos/{owner}/{repo}/compare/{before}...{head}"
+
+        try:
+            async with self.session.get(url) as resp:
+                self._parse_rate_limit_headers(dict(resp.headers))
+
+                if resp.status != 200:
+                    return 0, []
+
+                data = await resp.json()
+                ahead_by = data.get("ahead_by", 0)
+                commits = []
+
+                for c in data.get("commits", []):
+                    commit_info = c.get("commit", {})
+                    commits.append({
+                        "sha": c.get("sha", ""),
+                        "message": commit_info.get("message", ""),
+                        "author": commit_info.get("author", {}).get("name", ""),
+                    })
+
+                return ahead_by, commits
+
+        except Exception as e:
+            logger.error(f"[GitHub] 获取对比信息失败: {e}")
+            return 0, []
+
     def clear_cache(self, owner: str = None, repo: str = None):
         """清除 ETag 缓存"""
         if owner and repo:
