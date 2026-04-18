@@ -1,0 +1,69 @@
+{
+    "github_token": {
+        "description": "GitHub API 访问令牌",
+        "type": "string",
+        "default": "",
+        "hint": "用于访问 private 仓库和增加 API 速率限制。在 GitHub Settings → Developer settings → Personal access tokens 中创建。格式: ghp_xxxxxx",
+        "obvious_hint": true
+    },
+    "poll_interval": {
+        "description": "轮询间隔（秒）",
+        "type": "int",
+        "default": 60,
+        "hint": "每隔多少秒检查一次仓库事件，默认 60 秒（1分钟）。建议不低于 60 秒以避免触发速率限制"
+    },
+    "max_events_per_message": {
+        "description": "每次推送的最大事件数",
+        "type": "int",
+        "default": 5,
+        "hint": "单次推送最多显示多少个事件，避免消息过长"
+    },
+    "enable_push_event": {
+        "description": "启用 Push 事件通知",
+        "type": "bool",
+        "default": true,
+        "hint": "是否接收代码推送事件"
+    },
+    "enable_release_event": {
+        "description": "启用 Release 事件通知",
+        "type": "bool",
+        "default": true,
+        "hint": "是否接收版本发布事件"
+    },
+    "enable_issues_event": {
+        "description": "启用 Issues 事件通知",
+        "type": "bool",
+        "default": false,
+        "hint": "是否接收 Issue 创建/关闭/更新事件"
+    },
+    "enable_pull_request_event": {
+        "description": "启用 Pull Request 事件通知",
+        "type": "bool",
+        "default": false,
+        "hint": "是否接收 PR 创建/关闭/合并事件"
+    },
+    "enable_star_event": {
+        "description": "启用 Star 事件通知",
+        "type": "bool",
+        "default": false,
+        "hint": "是否接收仓库被 Star 的事件"
+    },
+    "enable_fork_event": {
+        "description": "启用 Fork 事件通知",
+        "type": "bool",
+        "default": false,
+        "hint": "是否接收仓库被 Fork 的事件"
+    },
+    "use_etag_cache": {
+        "description": "启用 ETag 缓存",
+        "type": "bool",
+        "default": true,
+        "hint": "使用 ETag 机制减少 API 调用，304 响应不消耗速率限制"
+    },
+    "respect_poll_interval": {
+        "description": "遵守 GitHub 建议的轮询间隔",
+        "type": "bool",
+        "default": true,
+        "hint": "根据 GitHub 返回的 X-Poll-Interval 头动态调整轮询间隔"
+    }
+}

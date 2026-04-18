@@ -1,0 +1,7 @@
+name: astrbot_plugin_github_notifier
+display_name: GitHub 仓库事件通知
+desc: 通过 GitHub Events API 轮询仓库事件（Push/Release/Issues/PR等），支持会话级订阅，可访问 public 和 private 仓库
+version: v1.0.0
+author: Developer
+repo: https://github.com/yourusername/astrbot_plugin_github_notifier
+astrbot_version: ">=4.9.2"
