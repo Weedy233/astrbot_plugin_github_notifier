@@ -132,7 +132,7 @@ class GitHubNotifierPlugin(Star):
 
             payload = PushEventPayload.from_dict(event.payload)
 
-            if payload.commit_count > 0:
+            if payload.commit_count > 0 and payload.commits:
                 continue
 
             if not payload.before or not payload.after:
@@ -148,6 +148,7 @@ class GitHubNotifierPlugin(Star):
             if total_commits > 0:
                 event.payload["size"] = total_commits
                 event.payload["commits"] = commits
+                event.payload["compare"] = f"https://github.com/{repo}/compare/{payload.before}...{payload.after}"
                 logger.debug(
                     f"[GitHubNotifier] 通过 Compare API 补充 {repo} 的 {total_commits} 个提交信息"
                 )
