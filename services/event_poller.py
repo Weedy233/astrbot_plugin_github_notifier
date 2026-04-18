@@ -11,7 +11,7 @@ from ..models.event_models import GitHubEvent
 
 class EventPoller:
     KV_KEY_INITIALIZED = "github_notifier_initialized_"
-    KV_KEY_LAST_EVENT = "github_notifier_last_event_"
+    KV_KEY_LAST_EVENT_TIME = "github_notifier_last_event_time_"
 
     def __init__(
         self,
@@ -32,6 +32,7 @@ class EventPoller:
 
         self._processed_events: Dict[str, Set[str]] = {}
         self._initialized_repos: Set[str] = set()
+        self._last_event_times: Dict[str, datetime] = {}
         self._last_poll_time: Dict[str, datetime] = {}
 
         self._event_callback: Optional[Callable[[str, List[GitHubEvent]], None]] = None
@@ -50,8 +51,8 @@ class EventPoller:
     def _get_init_key(self, repo: str) -> str:
         return f"{self.KV_KEY_INITIALIZED}{repo}"
 
-    def _get_last_event_key(self, repo: str) -> str:
-        return f"{self.KV_KEY_LAST_EVENT}{repo}"
+    def _get_last_event_time_key(self, repo: str) -> str:
+        return f"{self.KV_KEY_LAST_EVENT_TIME}{repo}"
 
     async def _is_repo_initialized(self, repo: str) -> bool:
         if repo in self._initialized_repos:
@@ -59,15 +60,37 @@ class EventPoller:
         initialized = await self.plugin.get_kv_data(self._get_init_key(repo), "")
         if initialized:
             self._initialized_repos.add(repo)
+            await self._load_last_event_time(repo)
             return True
         return False
 
-    async def _mark_repo_initialized(self, repo: str, last_event_id: str = ""):
+    async def _load_last_event_time(self, repo: str):
+        time_str = await self.plugin.get_kv_data(self._get_last_event_time_key(repo), "")
+        if time_str:
+            try:
+                self._last_event_times[repo] = datetime.fromisoformat(time_str)
+            except ValueError:
+                pass
+
+    async def _mark_repo_initialized(self, repo: str, last_event_time: datetime = None):
         await self.plugin.put_kv_data(self._get_init_key(repo), "1")
-        if last_event_id:
-            await self.plugin.put_kv_data(self._get_last_event_key(repo), last_event_id)
+        if last_event_time:
+            await self.plugin.put_kv_data(
+                self._get_last_event_time_key(repo),
+                last_event_time.isoformat()
+            )
+            self._last_event_times[repo] = last_event_time
         self._initialized_repos.add(repo)
         logger.info(f"[EventPoller] 已标记 {repo} 为已初始化")
+
+    async def _update_last_event_time(self, repo: str, event_time: datetime):
+        current = self._last_event_times.get(repo)
+        if not current or event_time > current:
+            self._last_event_times[repo] = event_time
+            await self.plugin.put_kv_data(
+                self._get_last_event_time_key(repo),
+                event_time.isoformat()
+            )
 
     async def start(self):
         if self._running:
@@ -149,9 +172,9 @@ class EventPoller:
 
         if not is_initialized:
             if events:
-                last_event_id = events[0].id if events else ""
+                last_event_time = max(e.created_at for e in events)
                 self._record_events(repo, events)
-                await self._mark_repo_initialized(repo, last_event_id)
+                await self._mark_repo_initialized(repo, last_event_time)
                 logger.info(f"[EventPoller] {repo} 首次轮询，已记录 {len(events)} 个事件，不推送")
             self._last_poll_time[repo] = datetime.utcnow()
             return
@@ -161,7 +184,10 @@ class EventPoller:
         if new_events:
             logger.info(f"[EventPoller] {repo} 发现 {len(new_events)} 个新事件")
 
-            self._record_events(repo, events)
+            self._record_events(repo, new_events)
+
+            latest_time = max(e.created_at for e in new_events)
+            await self._update_last_event_time(repo, latest_time)
 
             if self._event_callback:
                 try:
@@ -177,10 +203,15 @@ class EventPoller:
         if repo not in self._processed_events:
             self._processed_events[repo] = set()
 
+        last_time = self._last_event_times.get(repo)
+
         new_events = []
         for event in events:
-            if event.id not in self._processed_events[repo]:
-                new_events.append(event)
+            if event.id in self._processed_events[repo]:
+                continue
+            if last_time and event.created_at <= last_time:
+                continue
+            new_events.append(event)
 
         return new_events
 
@@ -206,6 +237,9 @@ class EventPoller:
 
         if events:
             self._record_events(repo, events)
+            if events:
+                latest = max(e.created_at for e in events)
+                await self._update_last_event_time(repo, latest)
             self._last_poll_time[repo] = datetime.utcnow()
 
         return events
@@ -225,8 +259,8 @@ class EventPoller:
 
         if events:
             self._record_events(repo, events)
-            last_event_id = events[0].id if events else ""
-            await self._mark_repo_initialized(repo, last_event_id)
+            last_event_time = max(e.created_at for e in events)
+            await self._mark_repo_initialized(repo, last_event_time)
 
         self._last_poll_time[repo] = datetime.utcnow()
         return True
@@ -245,6 +279,10 @@ class EventPoller:
                 repo: len(ids) for repo, ids in self._processed_events.items()
             },
             "initialized_repos": list(self._initialized_repos),
+            "last_event_times": {
+                repo: t.isoformat() if t else None
+                for repo, t in self._last_event_times.items()
+            },
             "last_poll": {
                 repo: t.isoformat() if t else None
                 for repo, t in self._last_poll_time.items()
