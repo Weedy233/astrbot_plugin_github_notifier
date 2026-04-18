@@ -176,11 +176,19 @@ class GitHubNotifierPlugin(Star):
         # 执行订阅
         event_types = [k for k, v in self.enabled_events.items() if v]
 
+        # 检查是否是仓库的第一个订阅者
+        existing_subscribers = await self.subscription_manager.get_subscribers(repo)
+        is_first_subscriber = len(existing_subscribers) == 0
+
         await self.subscription_manager.subscribe(
             repo=repo,
             umo=umo,
             event_types=event_types,
         )
+
+        # 如果是第一个订阅者，静默初始化（记录当前事件，避免推送历史）
+        if is_first_subscriber:
+            await self.event_poller.initialize_repo(repo)
 
         yield event.plain_result(
             f"✅ 成功订阅 {repo}\n\n"

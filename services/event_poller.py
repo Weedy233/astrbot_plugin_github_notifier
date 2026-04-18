@@ -211,6 +211,29 @@ class EventPoller:
 
         return events
 
+    async def initialize_repo(self, repo: str) -> bool:
+        """初始化仓库（静默获取当前事件，不推送）
+
+        用于新订阅时，记录当前已有的事件ID，避免推送历史事件。
+
+        Returns:
+            是否初始化成功
+        """
+        owner, repo_name = self._parse_repo(repo)
+        if not owner or not repo_name:
+            return False
+
+        events, _ = await self.github_client.fetch_events(
+            owner, repo_name, per_page=self.max_events_per_poll
+        )
+
+        if events:
+            self._record_events(repo, events)
+            logger.info(f"[EventPoller] 初始化 {repo}，记录了 {len(events)} 个已有事件")
+
+        self._last_poll_time[repo] = datetime.utcnow()
+        return True
+
     def clear_processed_cache(self, repo: str = None):
         """清除已处理事件缓存"""
         if repo:
