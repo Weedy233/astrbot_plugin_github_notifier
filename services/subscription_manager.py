@@ -5,7 +5,6 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass, asdict
 
 from astrbot.api import logger
-from astrbot.api.star import Context
 
 
 @dataclass
@@ -26,33 +25,21 @@ class Subscription:
 
 
 class SubscriptionManager:
-    """订阅管理器
-
-    管理仓库与会话的订阅关系:
-    - 支持多会话订阅同一仓库
-    - 支持单一会话订阅多仓库
-    - 支持按事件类型筛选
-    - 使用 AstrBot KV 存储持久化
-    """
-
     KV_KEY_SUBSCRIPTIONS = "github_notifier_subscriptions"
 
-    def __init__(self, context: Context):
-        self.context = context
-        # 内存缓存: repo -> {umo: Subscription}
+    def __init__(self, plugin):
+        self.plugin = plugin
         self._subscriptions: Dict[str, Dict[str, Subscription]] = {}
         self._loaded = False
 
     async def _ensure_loaded(self):
-        """确保已从 KV 加载数据"""
         if not self._loaded:
             await self._load_from_kv()
             self._loaded = True
 
     async def _load_from_kv(self):
-        """从 KV 存储加载订阅数据"""
         try:
-            data = await self.context.get_kv_data(self.KV_KEY_SUBSCRIPTIONS, "")
+            data = await self.plugin.get_kv_data(self.KV_KEY_SUBSCRIPTIONS, "")
             if data:
                 parsed = json.loads(data)
                 self._subscriptions = {}
@@ -69,13 +56,12 @@ class SubscriptionManager:
             self._subscriptions = {}
 
     async def _save_to_kv(self):
-        """保存订阅数据到 KV 存储"""
         try:
             data = {
                 repo: {umo: sub.to_dict() for umo, sub in subscribers.items()}
                 for repo, subscribers in self._subscriptions.items()
             }
-            await self.context.put_kv_data(
+            await self.plugin.put_kv_data(
                 self.KV_KEY_SUBSCRIPTIONS, json.dumps(data, ensure_ascii=False)
             )
         except Exception as e:

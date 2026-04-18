@@ -1,11 +1,8 @@
-"""事件轮询服务 - 后台定时轮询仓库事件"""
-
 import asyncio
 from typing import Callable, Dict, List, Optional, Set
 from datetime import datetime
 
 from astrbot.api import logger
-from astrbot.api.star import Context
 
 from .github_client import GitHubClient
 from .subscription_manager import SubscriptionManager
@@ -13,15 +10,6 @@ from ..models.event_models import GitHubEvent
 
 
 class EventPoller:
-    """事件轮询服务
-
-    负责:
-    - 定时轮询所有订阅的仓库
-    - 跟踪已处理的事件 ID 避免重复推送
-    - 按仓库维护轮询状态
-    - 使用 KV 持久化初始化标记，避免重启后推送历史事件
-    """
-
     KV_KEY_INITIALIZED = "github_notifier_initialized_"
     KV_KEY_LAST_EVENT = "github_notifier_last_event_"
 
@@ -29,13 +17,13 @@ class EventPoller:
         self,
         github_client: GitHubClient,
         subscription_manager: SubscriptionManager,
-        context: Context,
+        plugin,
         poll_interval: int = 60,
         respect_poll_interval: bool = True,
     ):
         self.github_client = github_client
         self.subscription_manager = subscription_manager
-        self.context = context
+        self.plugin = plugin
         self.poll_interval = poll_interval
         self.respect_poll_interval = respect_poll_interval
 
@@ -68,16 +56,16 @@ class EventPoller:
     async def _is_repo_initialized(self, repo: str) -> bool:
         if repo in self._initialized_repos:
             return True
-        initialized = await self.context.get_kv_data(self._get_init_key(repo), "")
+        initialized = await self.plugin.get_kv_data(self._get_init_key(repo), "")
         if initialized:
             self._initialized_repos.add(repo)
             return True
         return False
 
     async def _mark_repo_initialized(self, repo: str, last_event_id: str = ""):
-        await self.context.put_kv_data(self._get_init_key(repo), "1")
+        await self.plugin.put_kv_data(self._get_init_key(repo), "1")
         if last_event_id:
-            await self.context.put_kv_data(self._get_last_event_key(repo), last_event_id)
+            await self.plugin.put_kv_data(self._get_last_event_key(repo), last_event_id)
         self._initialized_repos.add(repo)
         logger.info(f"[EventPoller] 已标记 {repo} 为已初始化")
 
