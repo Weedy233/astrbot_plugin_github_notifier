@@ -230,19 +230,7 @@ class MessageFormatter:
         repo: str,
         event: GitHubEvent,
     ) -> str:
-        """格式化 Push 事件"""
         payload = PushEventPayload.from_dict(event.payload)
-
-        if self.template_manager:
-            context = self.template_manager.build_push_context(
-                repo=repo,
-                username=event.actor_login,
-                branch=payload.branch,
-                commit_count=payload.commit_count,
-                commits=payload.commits,
-                compare_url=payload.compare,
-            )
-            return self.template_manager.render_full("PushEvent", context)
 
         lines = [
             f"📝 [{repo}] 代码推送",

@@ -117,11 +117,6 @@ class GitHubNotifierPlugin(Star):
                     logger.error(f"[GitHubNotifier] 向 {umo} 发送消息失败: {e}")
 
     async def _enrich_push_events(self, repo: str, events: List[GitHubEvent]):
-        """为 PushEvent 补充提交信息
-
-        GitHub Events API 的 PushEvent 经常返回空的 size 和 commits 数组，
-        需要调用 Compare API 来获取实际的提交信息。
-        """
         from .models.event_models import PushEventPayload
 
         owner, repo_name = self._parse_repo(repo)
@@ -149,9 +144,7 @@ class GitHubNotifierPlugin(Star):
                 event.payload["size"] = total_commits
                 event.payload["commits"] = commits
                 event.payload["compare"] = f"https://github.com/{repo}/compare/{payload.before}...{payload.after}"
-                logger.debug(
-                    f"[GitHubNotifier] 通过 Compare API 补充 {repo} 的 {total_commits} 个提交信息"
-                )
+                logger.info(f"[GitHubNotifier] 补充 {repo} 的 {total_commits} 个提交信息")
 
     # ==================== 命令处理器 ====================
 
